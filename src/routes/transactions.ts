@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { knex } from "../database";
 import { chackSessionIdExists } from "../midlewares/check-session-id-exists";
+import { request } from "node:http";
 
 export async function transactionsRoutes(app: FastifyInstance) {
   app.get(
@@ -43,11 +44,11 @@ export async function transactionsRoutes(app: FastifyInstance) {
       const { sessionId } = request.cookies;
 
       const transaction = await knex("transactions")
-      .where({
-        sessionId: sessionId,
-        id,
-      })
-      .first();
+        .where({
+          sessionId: sessionId,
+          id,
+        })
+        .first();
 
       return { transaction };
     }
@@ -59,10 +60,10 @@ export async function transactionsRoutes(app: FastifyInstance) {
       preHandler: [chackSessionIdExists],
     },
     async (request) => {
-        const { sessionId } = request.cookies;
+      const { sessionId } = request.cookies;
 
       const summary = await knex("transactions")
-        .where('sessionId', sessionId)
+        .where("sessionId", sessionId)
         .sum("amount", { as: "amount" })
         .first();
 
