@@ -1,63 +1,104 @@
-import { FastifyInstance } from "fastify"
-import { z } from 'zod'
-import { randomUUID } from "node:crypto"
+import { FastifyInstance } from "fastify";
+import { z } from "zod";
+import { randomUUID } from "node:crypto";
 
-import { knex } from "../database"
+import { knex } from "../database";
+import { chackSessionIdExists } from "../midlewares/check-session-id-exists";
 
 export async function transactionsRoutes(app: FastifyInstance) {
-    app.get('/transactions', async () => {
-        const transactions = await knex('transactions').select()
+  app.get(
+    "/transactions",
+    {
+      preHandler: [chackSessionIdExists],
+    },
+    async (request, reply) => {
+      const { sessionId } = request.cookies;
 
-        return { transactions }
-    })
+      if (!sessionId) {
+        return reply.status(401).send({
+          error: "Unauthorized",
+        });
+      }
 
-    app.get('/transactions/:id', async (request) => {
-        const getTransactionParamsSchema = z.object({
-            id: z.string().uuid(),
-        })
+      const transactions = await knex("transactions")
+        .where("sessionId", sessionId)
+        .select();
 
-        const { id } = getTransactionParamsSchema.parse(request.params)
+      return { transactions };
+    }
+  );
 
-        const transaction = await knex('transactions').where('id', id).first()
+  app.get(
+    "/transactions/:id",
+    {
+      preHandler: [chackSessionIdExists],
+    },
+    async (request) => {
+      const getTransactionParamsSchema = z.object({
+        id: z.string().uuid(),
+      });
 
-        return { transaction }
-    })
+      const { id } = getTransactionParamsSchema.parse(request.params);
 
-    app.get('/transactions/summary', async () => {
-        const summary = await knex('transactions').sum('amount', {as: 'amount'}).first()
+      const { sessionId } = request.cookies;
 
-        return { summary }
-    })
+      const transaction = await knex("transactions")
+      .where({
+        sessionId: sessionId,
+        id,
+      })
+      .first();
 
-    app.post('/transactions', async (request, reply) => {
-        const createTransactionBodySchema = z.object({
-            title: z.string(),
-            amount: z.number(),
-            type: z.enum(['credit', 'debit']),
-        })
+      return { transaction };
+    }
+  );
 
-        const { title, amount, type } = createTransactionBodySchema.parse(
-            request.body,
-        )
+  app.get(
+    "/transactions/summary",
+    {
+      preHandler: [chackSessionIdExists],
+    },
+    async (request) => {
+        const { sessionId } = request.cookies;
 
-        let sessionId = request.cookies.session_id
+      const summary = await knex("transactions")
+        .where('sessionId', sessionId)
+        .sum("amount", { as: "amount" })
+        .first();
 
-        if(!sessionId){
-            sessionId = randomUUID()
+      return { summary };
+    }
+  );
 
-            reply.cookie('sessionId', sessionId, {
-                path: '/',
-                maxAge: 1000 * 600 * 60 *  24 * 7 // 7 days
-            })
-        }
+  app.post("/transactions", async (request, reply) => {
+    const createTransactionBodySchema = z.object({
+      title: z.string(),
+      amount: z.number(),
+      type: z.enum(["credit", "debit"]),
+    });
 
-        await knex('transactions').insert({
-            id: randomUUID(),
-            title,
-            amount: type === 'credit' ? amount : amount * -1, 
-            sessionId: sessionId
-        })
+    const { title, amount, type } = createTransactionBodySchema.parse(
+      request.body
+    );
 
-        return reply.status(201).send()
-    })
+    let sessionId = request.cookies.session_id;
+
+    if (!sessionId) {
+      sessionId = randomUUID();
+
+      reply.cookie("sessionId", sessionId, {
+        path: "/",
+        maxAge: 1000 * 600 * 60 * 24 * 7, // 7 days
+      });
+    }
+
+    await knex("transactions").insert({
+      id: randomUUID(),
+      title,
+      amount: type === "credit" ? amount : amount * -1,
+      sessionId: sessionId,
+    });
+
+    return reply.status(201).send();
+  });
 }
